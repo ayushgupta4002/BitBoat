@@ -21,6 +21,11 @@ func (c *Cache) Set(key []byte, value []byte, ttl time.Duration) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.data[string(key)] = value
+	ticker := time.NewTicker(ttl)
+	go func() {
+		<-ticker.C
+		delete(c.data, string(key))
+	}()
 	return nil
 }
 
@@ -28,6 +33,7 @@ func (c *Cache) Get(key []byte) ([]byte, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	val, ok := c.data[string(key)]
+	// log.Println("get key", string(key), "value", string(val))
 	if !ok {
 		return nil, fmt.Errorf("key %s not found", key)
 	}
