@@ -3,6 +3,7 @@ package cache
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Cache struct {
@@ -16,7 +17,7 @@ func NewCache() *Cache {
 	}
 }
 
-func (c *Cache) Set(key, value []byte) error {
+func (c *Cache) Set(key []byte, value []byte, ttl time.Duration) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.data[string(key)] = value
