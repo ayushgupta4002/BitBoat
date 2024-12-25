@@ -1,6 +1,9 @@
 package main
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 type Command string
 
@@ -14,4 +17,16 @@ type Message struct {
 	value []byte
 	cmd   Command
 	ttl   time.Duration
+}
+
+func (m *Message) toBytes() []byte {
+	switch m.cmd {
+	case CmdSet:
+		return []byte(string(m.cmd) + " " + string(m.key) + " " + string(m.value) + " " + strconv.Itoa(int(m.ttl.Milliseconds())))
+	case CmdGet:
+		return []byte(string(m.cmd) + " " + string(m.key))
+	default:
+		panic("invalid command")
+	}
+
 }
