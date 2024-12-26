@@ -13,7 +13,7 @@ func TestGetCommand(t *testing.T) {
 		Key: []byte("foo"),
 	}
 	r := bytes.NewReader(cmd.Bytes())
-	CmdGet, err := parseCommand(r)
+	CmdGet, err := ParseCommand(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestSetCommand(t *testing.T) {
 		TTL:   42,
 	}
 	r := bytes.NewReader(cmd.Bytes())
-	CmdSet, err := parseCommand(r)
+	CmdSet, err := ParseCommand(r)
 	if err != nil {
 		t.Fatal(err)
 	}

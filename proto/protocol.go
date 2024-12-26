@@ -44,7 +44,7 @@ func (c *CommandGet) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func parseCommand(r io.Reader) (any, error) {
+func ParseCommand(r io.Reader) (any, error) {
 	var cmd Command
 	err := binary.Read(r, binary.LittleEndian, &cmd)
 	if err != nil {
@@ -52,15 +52,15 @@ func parseCommand(r io.Reader) (any, error) {
 	}
 	switch cmd {
 	case CmdSet:
-		return parseSet(r), nil
+		return ParseSet(r), nil
 	case CmdGet:
-		return parseGet(r), nil
+		return ParseGet(r), nil
 	default:
 		return nil, fmt.Errorf("invalid command: %d", cmd)
 	}
 }
 
-func parseSet(r io.Reader) *CommandSet {
+func ParseSet(r io.Reader) *CommandSet {
 	cmd := &CommandSet{}
 	var keyLen int32
 	binary.Read(r, binary.LittleEndian, &keyLen)
@@ -79,7 +79,7 @@ func parseSet(r io.Reader) *CommandSet {
 
 }
 
-func parseGet(r io.Reader) *CommandGet {
+func ParseGet(r io.Reader) *CommandGet {
 	cmd := &CommandGet{}
 	var keyLen int32
 	binary.Read(r, binary.LittleEndian, &keyLen)

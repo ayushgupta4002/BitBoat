@@ -1,34 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
-	"fmt"
-	"net"
-	"os"
-	"os/signal"
-	"syscall"
+	"log"
+	"time"
 
 	"github.com/ayushgupta4002/bitboat/cache"
+	"github.com/ayushgupta4002/bitboat/client"
 )
 
 func main() {
-	conn, err := net.Dial("tcp", ":3000")
-	if err != nil {
-		panic(err)
-	}
-
-	// Send a SET command
-	_, err = conn.Write([]byte("SET ayush 100 250000000000"))
-	if err != nil {
-		panic(err)
-	}
-	// Wait for graceful shutdown
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
-
-	fmt.Println("Waiting for interrupt signal...")
-	<-signalChan // Blocks until an interrupt signal is received
-	fmt.Println("Shutting down gracefully")
 
 	var listenAddress = flag.String("listenaddr", "localhost:8080", "server listen address")
 	var adminAddress = flag.String("adminaddr", "", "admin listen address")
@@ -38,6 +20,29 @@ func main() {
 		isAdmin:    len(*adminAddress) == 0,
 		adminAddr:  *adminAddress,
 	}
+
+	go func() {
+		time.Sleep(2 * time.Second)
+		c, err := client.NewClient(*listenAddress, client.ClientOpts{})
+		if err != nil {
+			log.Fatal("client cannot request", err)
+		}
+		for i := 0; i < 5; i++ {
+			err := c.Set(context.Background(), []byte("ayush"), []byte("gupta"), 200000000)
+			if err != nil {
+				log.Fatal("client cannot request", err)
+				continue
+			}
+		}
+		val, err := c.Get(context.Background(), []byte("ayush"))
+		if err != nil {
+			log.Fatal("client cannot request", err)
+		}
+		log.Println(string(val))
+
+		c.Close()
+
+	}()
 
 	server := NEWServer(listOpts, cache.NewCache())
 	server.Start()

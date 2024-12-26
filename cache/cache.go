@@ -22,10 +22,12 @@ func (c *Cache) Set(key []byte, value []byte, ttl time.Duration) error {
 	defer c.lock.Unlock()
 	c.data[string(key)] = value
 	ticker := time.NewTicker(ttl)
-	go func() {
-		<-ticker.C
-		delete(c.data, string(key))
-	}()
+	if ttl > 0 {
+		go func() {
+			<-ticker.C
+			delete(c.data, string(key))
+		}()
+	}
 	return nil
 }
 

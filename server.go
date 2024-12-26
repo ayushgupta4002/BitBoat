@@ -1,15 +1,13 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
+	"log"
 	"net"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ayushgupta4002/bitboat/cache"
+	"github.com/ayushgupta4002/bitboat/proto"
 )
 
 type ServerOpts struct {
@@ -20,15 +18,13 @@ type ServerOpts struct {
 
 type Server struct {
 	ServerOpts
-	cache     cache.Cacher
-	followers map[net.Conn]struct{}
+	cache cache.Cacher
 }
 
 func NEWServer(opts ServerOpts, c cache.Cacher) *Server {
 	return &Server{
 		ServerOpts: opts,
 		cache:      c,
-		followers:  make(map[net.Conn]struct{}),
 	}
 }
 
@@ -38,18 +34,7 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 	defer l.Close()
-	if !s.isAdmin {
-		go func() {
-			connection, err := net.Dial("tcp", s.adminAddr)
-			if err != nil {
-				fmt.Printf("failed to listen: %v", err)
-				return
-			}
-			fmt.Println("Connected to admin server", s.adminAddr)
-			go s.handleConn(connection)
 
-		}()
-	}
 	fmt.Printf("server listening on %s\n", s.listenAddr)
 	for {
 		conn, err := l.Accept()
@@ -57,19 +42,17 @@ func (s *Server) Start() error {
 			fmt.Printf("failed to accept: %v", err)
 			continue
 		}
+		fmt.Printf("New client connected: %s\n", conn.RemoteAddr()) // Log new connection
+
 		go s.handleConn(conn)
 	}
 }
 
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
-	buf := make([]byte, 2048)
-	if s.isAdmin {
-		s.followers[conn] = struct{}{}
-	}
 
 	for {
-		n, err := conn.Read(buf)
+		cmdStr, err := proto.ParseCommand(conn)
 		if err != nil {
 			if err.Error() == "EOF" {
 				// Gracefully handle the client closing the connection
@@ -79,37 +62,22 @@ func (s *Server) handleConn(conn net.Conn) {
 			fmt.Printf("failed to read: %v\n", err)
 			break
 		}
-		if n == 0 {
-			return
-		}
-		fmt.Printf("received: %s\n", string(buf[:n]))
-
-		s.handleCommand(conn, buf[:n])
+		s.handleCommand(conn, cmdStr)
 	}
+	fmt.Println("connection closed:", conn.RemoteAddr())
+
 }
 
-func (s *Server) handleCommand(conn net.Conn, rawMsg []byte) {
-	msg, err := s.commandParser(rawMsg)
-	if err != nil {
-		fmt.Println("Error parsing command:", err)
-		conn.Write([]byte(err.Error()))
-		return
-	}
-	switch msg.cmd {
-	case CmdSet:
-		fmt.Println("SET command")
-		err = s.handleSet(conn, msg)
-
-	case CmdGet:
-		fmt.Println("GET command")
-		err = s.handleGet(conn, msg)
-	}
-	if err != nil {
-		conn.Write([]byte(err.Error()))
+func (s *Server) handleCommand(conn net.Conn, cmdStr any) {
+	switch cmd := cmdStr.(type) {
+	case *proto.CommandSet:
+		s.handleSet(conn, cmd)
+	case *proto.CommandGet:
+		s.handleGet(conn, cmd)
 	}
 }
-func (s *Server) handleGet(conn net.Conn, msg *Message) error {
-	value, err := s.cache.Get(msg.key)
+func (s *Server) handleGet(conn net.Conn, msg *proto.CommandGet) error {
+	value, err := s.cache.Get(msg.Key)
 	if err != nil {
 		return err
 	}
@@ -117,52 +85,52 @@ func (s *Server) handleGet(conn net.Conn, msg *Message) error {
 
 	return err
 }
-func (s *Server) handleSet(conn net.Conn, msg *Message) error {
-	err := s.cache.Set(msg.key, msg.value, msg.ttl)
+func (s *Server) handleSet(conn net.Conn, msg *proto.CommandSet) error {
+	log.Printf("SET %s to %s", msg.Key, msg.Value)
+	err := s.cache.Set(msg.Key, msg.Value, time.Duration(msg.TTL))
 	if err != nil {
 		return err
 	}
-	s.sendFollowers(context.TODO(), msg)
 	return nil
 }
 
-func (s *Server) sendFollowers(ctx context.Context, msg *Message) error {
-	fmt.Println("Sending message to followers", s.followers)
-	for conn := range s.followers {
+// func (s *Server) commandParser(msg []byte) (*Message, error) {
+// 	var msgStr = string(msg)
+// 	var parts = strings.Split(msgStr, " ")
+// 	fmt.Println("parts", parts)
 
-		rawMsg := msg.toBytes()
-		_, err := conn.Write(rawMsg)
-		if err != nil {
-			fmt.Println("Error sending message to follower:", err)
-			continue
-		}
-	}
-	return nil
-}
+// 	if len(parts) < 2 {
+// 		return nil, errors.New("invalid command")
+// 	}
+// 	msgStruct := &Message{
+// 		cmd: Command(parts[0]),
+// 		key: []byte(parts[1]),
+// 	}
+// 	if msgStruct.cmd == CmdSet {
+// 		if len(parts) < 4 {
+// 			return nil, errors.New("invalid SET command")
+// 		}
+// 		ttl, err := strconv.Atoi(parts[3])
+// 		if err != nil {
+// 			return nil, errors.New("invalid TTL")
+// 		}
+// 		msgStruct.value = []byte(parts[2])
+// 		msgStruct.ttl = time.Duration(ttl)
+// 	}
 
-func (s *Server) commandParser(msg []byte) (*Message, error) {
-	var msgStr = string(msg)
-	var parts = strings.Split(msgStr, " ")
-	fmt.Println("parts", parts)
+// 	return msgStruct, nil
+// }
 
-	if len(parts) < 2 {
-		return nil, errors.New("invalid command")
-	}
-	msgStruct := &Message{
-		cmd: Command(parts[0]),
-		key: []byte(parts[1]),
-	}
-	if msgStruct.cmd == CmdSet {
-		if len(parts) < 4 {
-			return nil, errors.New("invalid SET command")
-		}
-		ttl, err := strconv.Atoi(parts[3])
-		if err != nil {
-			return nil, errors.New("invalid TTL")
-		}
-		msgStruct.value = []byte(parts[2])
-		msgStruct.ttl = time.Duration(ttl)
-	}
+// func (s *Server) sendFollowers(ctx context.Context, msg *Message) error {
+// 	fmt.Println("Sending message to followers", s.followers)
+// 	for conn := range s.followers {
 
-	return msgStruct, nil
-}
+// 		rawMsg := msg.toBytes()
+// 		_, err := conn.Write(rawMsg)
+// 		if err != nil {
+// 			fmt.Println("Error sending message to follower:", err)
+// 			continue
+// 		}
+// 	}
+// 	return nil
+// }

@@ -1,0 +1,32 @@
+// package main
+
+// import (
+// 	"strconv"
+// 	"time"
+// )
+
+// type Command string
+
+// const (
+// 	CmdSet Command = "SET"
+// 	CmdGet Command = "GET"
+// )
+
+// type Message struct {
+// 	key   []byte
+// 	value []byte
+// 	cmd   Command
+// 	ttl   time.Duration
+// }
+
+// func (m *Message) toBytes() []byte {
+// 	switch m.cmd {
+// 	case CmdSet:
+// 		return []byte(string(m.cmd) + " " + string(m.key) + " " + string(m.value) + " " + strconv.Itoa(int(m.ttl.Milliseconds())))
+// 	case CmdGet:
+// 		return []byte(string(m.cmd) + " " + string(m.key))
+// 	default:
+// 		panic("invalid command")
+// 	}
+
+// }
