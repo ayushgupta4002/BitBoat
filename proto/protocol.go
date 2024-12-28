@@ -14,6 +14,7 @@ const (
 	CmdSet
 	CmdGet
 	CmdDel
+	CmdHas
 	CmdJoin
 )
 
@@ -23,8 +24,9 @@ type CommandSet struct {
 	Value []byte
 	TTL   int32
 }
-type CommandGet struct {
+type CommandGet_Del_Has struct {
 	Key []byte
+	Cmd Command
 }
 
 type Status byte
@@ -49,7 +51,7 @@ func (s Status) Normalize() string {
 	}
 }
 
-type ResponseSet struct {
+type ResponseSet_Has_Delete struct {
 	Status Status
 }
 
@@ -58,7 +60,7 @@ type ResponseGet struct {
 	Value  []byte
 }
 
-func (c *ResponseSet) Bytes() []byte {
+func (c *ResponseSet_Has_Delete) Bytes() []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, c.Status)
 	return buf.Bytes()
@@ -72,8 +74,8 @@ func (c *ResponseGet) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func ParseResponseSet(r io.Reader) (*ResponseSet, error) {
-	resp := &ResponseSet{}
+func ParseResponseSet_Has_Delete(r io.Reader) (*ResponseSet_Has_Delete, error) {
+	resp := &ResponseSet_Has_Delete{}
 	binary.Read(r, binary.LittleEndian, &resp.Status)
 	return resp, nil
 }
@@ -100,9 +102,24 @@ func (c *CommandSet) Bytes() []byte {
 	return buf.Bytes()
 }
 
-func (c *CommandGet) Bytes() []byte {
+func (c *CommandGet_Del_Has) BytesGET() []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, CmdGet)
+	binary.Write(buf, binary.LittleEndian, int32(len(c.Key)))
+	binary.Write(buf, binary.LittleEndian, c.Key)
+	return buf.Bytes()
+}
+
+func (c *CommandGet_Del_Has) BytesDEL() []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, CmdDel)
+	binary.Write(buf, binary.LittleEndian, int32(len(c.Key)))
+	binary.Write(buf, binary.LittleEndian, c.Key)
+	return buf.Bytes()
+}
+func (c *CommandGet_Del_Has) BytesHas() []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, CmdHas)
 	binary.Write(buf, binary.LittleEndian, int32(len(c.Key)))
 	binary.Write(buf, binary.LittleEndian, c.Key)
 	return buf.Bytes()
@@ -118,7 +135,11 @@ func ParseCommand(r io.Reader) (any, error) {
 	case CmdSet:
 		return ParseSet(r), nil
 	case CmdGet:
-		return ParseGet(r), nil
+		return ParseGet(r, cmd), nil
+	case CmdDel:
+		return ParseGet(r, cmd), nil
+	case CmdHas:
+		return ParseGet(r, cmd), nil
 	case CmdJoin:
 		return &CommandJoin{}, nil
 	default:
@@ -145,12 +166,13 @@ func ParseSet(r io.Reader) *CommandSet {
 
 }
 
-func ParseGet(r io.Reader) *CommandGet {
-	cmd := &CommandGet{}
+func ParseGet(r io.Reader, command Command) *CommandGet_Del_Has {
+	cmd := &CommandGet_Del_Has{}
 	var keyLen int32
 	binary.Read(r, binary.LittleEndian, &keyLen)
 	key := make([]byte, keyLen)
 	binary.Read(r, binary.LittleEndian, &key)
 	cmd.Key = key
+	cmd.Cmd = command
 	return cmd
 }

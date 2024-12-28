@@ -32,6 +32,45 @@ func NewClient(addr string, opts ClientOpts) (*Client, error) {
 	}, nil
 }
 
+func (c *Client) Has(ctx context.Context, key []byte) error {
+	cmd := &proto.CommandGet_Del_Has{
+		Key: key,
+	}
+	_, err := c.conn.Write(cmd.BytesHas())
+	if err != nil {
+		return err
+	}
+	resp, err := proto.ParseResponseSet_Has_Delete(c.conn)
+	if err != nil {
+		return err
+	}
+	// if resp.Status != proto.StatusOK {
+	// 	log.Printf("server responsed with non OK status %s", resp.Status.Normalize())
+	// }
+	log.Printf("Has Status: %s", resp.Status.Normalize())
+
+	return nil
+}
+
+func (c *Client) Delete(ctx context.Context, key []byte) error {
+	cmd := &proto.CommandGet_Del_Has{
+		Key: key,
+	}
+	_, err := c.conn.Write(cmd.BytesDEL())
+	if err != nil {
+		return err
+	}
+	resp, err := proto.ParseResponseSet_Has_Delete(c.conn)
+	if err != nil {
+		return err
+	}
+	if resp.Status != proto.StatusOK {
+		return fmt.Errorf("server responsed with non OK status [%s]", resp.Status.Normalize())
+	}
+	log.Printf("DELETE Status: %s", resp.Status.Normalize())
+
+	return nil
+}
 func (c *Client) Set(ctx context.Context, key []byte, value []byte, ttl int32) error {
 	cmd := &proto.CommandSet{
 		Key:   key,
@@ -42,7 +81,7 @@ func (c *Client) Set(ctx context.Context, key []byte, value []byte, ttl int32) e
 	if err != nil {
 		return err
 	}
-	resp, err := proto.ParseResponseSet(c.conn)
+	resp, err := proto.ParseResponseSet_Has_Delete(c.conn)
 	if err != nil {
 		return err
 	}
@@ -54,10 +93,10 @@ func (c *Client) Set(ctx context.Context, key []byte, value []byte, ttl int32) e
 }
 
 func (c *Client) Get(ctx context.Context, key []byte) ([]byte, error) {
-	cmd := &proto.CommandGet{
+	cmd := &proto.CommandGet_Del_Has{
 		Key: key,
 	}
-	_, err := c.conn.Write(cmd.Bytes())
+	_, err := c.conn.Write(cmd.BytesGET())
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +105,7 @@ func (c *Client) Get(ctx context.Context, key []byte) ([]byte, error) {
 		return nil, fmt.Errorf("server responsed with non OK status [%s]", resp.Status.Normalize())
 	}
 
-	log.Printf("GET Status", resp.Status)
+	log.Printf("GET Status: %s", resp.Status.Normalize())
 	if err != nil {
 		return nil, err
 	}

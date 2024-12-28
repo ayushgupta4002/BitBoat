@@ -9,10 +9,10 @@ import (
 
 func TestGetCommand(t *testing.T) {
 
-	cmd := &CommandGet{
+	cmd := &CommandGet_Del_Has{
 		Key: []byte("foo"),
 	}
-	r := bytes.NewReader(cmd.Bytes())
+	r := bytes.NewReader(cmd.BytesGET())
 	CmdGet, err := ParseCommand(r)
 	if err != nil {
 		t.Fatal(err)

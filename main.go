@@ -28,6 +28,7 @@ func main() {
 		if listOpts.isAdmin {
 			sendData(*listenAddress)
 		}
+
 	}()
 
 	server := NEWServer(listOpts, cache.NewCache())
@@ -41,19 +42,28 @@ func sendData(listenAddress string) {
 			if err != nil {
 				log.Fatal("client cannot request", err)
 			}
-			err = c.Set(context.Background(), []byte(fmt.Sprintf("key_%d", i)), []byte(fmt.Sprintf("Val_%d", i)), 200000000)
+			err = c.Set(context.Background(), []byte(fmt.Sprintf("key_%d", i)), []byte(fmt.Sprintf("Val_%d", i)), 2000000000)
 			if err != nil {
 				log.Fatal("client cannot request", err)
 			}
 
-			val, err := c.Get(context.Background(), []byte("ayush"))
+			val, err := c.Get(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
 			if err != nil {
 				log.Fatal("client cannot request", err)
 			}
 			log.Println(string(val))
+			err = c.Delete(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
+			if err != nil {
+				log.Fatal("client could not delete the key", err)
+			}
+			err = c.Has(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
+			if err != nil {
+				log.Fatal("client could not delete the key", err)
+			}
 
 			c.Close()
 		}()
+		time.Sleep(2 * time.Second)
 
 	}
 }

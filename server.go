@@ -77,7 +77,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
 	for {
-		cmdStr, err := proto.ParseCommand(conn)
+		cmdStruct, err := proto.ParseCommand(conn)
 		if err != nil {
 			if err.Error() == "EOF" {
 				// Gracefully handle the client closing the connection
@@ -87,7 +87,7 @@ func (s *Server) handleConn(conn net.Conn) {
 			fmt.Printf("failed to read: %v\n", err)
 			break
 		}
-		s.handleCommand(conn, cmdStr)
+		s.handleCommand(conn, cmdStruct)
 	}
 	fmt.Println("connection closed:", conn.RemoteAddr())
 
@@ -97,13 +97,65 @@ func (s *Server) handleCommand(conn net.Conn, cmdStr any) {
 	switch cmd := cmdStr.(type) {
 	case *proto.CommandSet:
 		s.handleSet(conn, cmd)
-	case *proto.CommandGet:
-		s.handleGet(conn, cmd)
+	case *proto.CommandGet_Del_Has:
+		if cmd.Cmd == proto.CmdDel {
+			s.handleDel(conn, cmd)
+		} else if cmd.Cmd == proto.CmdHas {
+			s.handleHas(conn, cmd)
+		} else {
+			s.handleGet(conn, cmd)
+		}
 	case *proto.CommandJoin:
 		s.handleJoin(conn, cmd)
 	}
 }
-func (s *Server) handleGet(conn net.Conn, msg *proto.CommandGet) error {
+
+func (s *Server) handleHas(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
+	resp := &proto.ResponseSet_Has_Delete{}
+	has, err := s.cache.Has(msg.Key)
+	if err != nil {
+		return err
+	}
+	if has {
+		resp.Status = proto.StatusOK
+	} else {
+		resp.Status = proto.StatusKeyNotFound
+	}
+	_, err = conn.Write(resp.Bytes())
+	if err != nil {
+		fmt.Println("Error writing response to client:", err)
+	}
+	return nil
+}
+
+func (s *Server) handleDel(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
+	
+	resp := &proto.ResponseSet_Has_Delete{}
+
+
+	go func() {
+		for subs := range s.subs {
+			err := subs.Delete(context.TODO(), msg.Key)
+			if err != nil {
+				fmt.Println("Error setting key on follower:", err)
+			}
+		}
+	}()
+
+	err := s.cache.Delete(msg.Key)
+	if err != nil {
+		return err
+	}
+	resp.Status = proto.StatusOK
+
+	_, err = conn.Write(resp.Bytes())
+	if err != nil {
+		fmt.Println("Error writing delete response to client:", err)
+	}
+	return nil
+}
+
+func (s *Server) handleGet(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
 	resp := &proto.ResponseGet{}
 
 	value, err := s.cache.Get(msg.Key)
@@ -119,7 +171,7 @@ func (s *Server) handleGet(conn net.Conn, msg *proto.CommandGet) error {
 	return nil
 }
 func (s *Server) handleSet(conn net.Conn, msg *proto.CommandSet) error {
-	resp := &proto.ResponseSet{}
+	resp := &proto.ResponseSet_Has_Delete{}
 	log.Printf("SET %s to %s", msg.Key, msg.Value)
 
 	go func() {
