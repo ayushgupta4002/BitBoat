@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
 	"time"
 
 	"github.com/ayushgupta4002/bitboat/cache"
+	"github.com/ayushgupta4002/bitboat/client"
 	"github.com/ayushgupta4002/bitboat/proto"
 )
 
@@ -18,6 +21,7 @@ type ServerOpts struct {
 
 type Server struct {
 	ServerOpts
+	subs  map[*client.Client]struct{}
 	cache cache.Cacher
 }
 
@@ -25,6 +29,7 @@ func NEWServer(opts ServerOpts, c cache.Cacher) *Server {
 	return &Server{
 		ServerOpts: opts,
 		cache:      c,
+		subs:       make(map[*client.Client]struct{}),
 	}
 }
 
@@ -34,6 +39,15 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 	defer l.Close()
+
+	if !s.isAdmin && len(s.adminAddr) > 0 {
+		go func() {
+			err = s.dialAdmin()
+			if err != nil {
+				log.Println(err)
+			}
+		}()
+	}
 
 	fmt.Printf("server listening on %s\n", s.listenAddr)
 	for {
@@ -46,6 +60,17 @@ func (s *Server) Start() error {
 
 		go s.handleConn(conn)
 	}
+}
+
+func (s *Server) dialAdmin() error {
+	conn, err := net.Dial("tcp", s.adminAddr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to admin server", err)
+	}
+	log.Println("connected to leader:", s.adminAddr)
+	binary.Write(conn, binary.LittleEndian, proto.CmdJoin)
+	s.handleConn(conn)
+	return nil
 }
 
 func (s *Server) handleConn(conn net.Conn) {
@@ -74,23 +99,53 @@ func (s *Server) handleCommand(conn net.Conn, cmdStr any) {
 		s.handleSet(conn, cmd)
 	case *proto.CommandGet:
 		s.handleGet(conn, cmd)
+	case *proto.CommandJoin:
+		s.handleJoin(conn, cmd)
 	}
 }
 func (s *Server) handleGet(conn net.Conn, msg *proto.CommandGet) error {
+	resp := &proto.ResponseGet{}
+
 	value, err := s.cache.Get(msg.Key)
 	if err != nil {
 		return err
 	}
-	_, err = conn.Write([]byte(value))
-
-	return err
+	resp.Status = proto.StatusOK
+	resp.Value = value
+	_, err = conn.Write(resp.Bytes())
+	if err != nil {
+		fmt.Println("Error writing response to client:", err)
+	}
+	return nil
 }
 func (s *Server) handleSet(conn net.Conn, msg *proto.CommandSet) error {
+	resp := &proto.ResponseSet{}
 	log.Printf("SET %s to %s", msg.Key, msg.Value)
+
+	go func() {
+		for subs := range s.subs {
+			err := subs.Set(context.TODO(), msg.Key, msg.Value, msg.TTL)
+			if err != nil {
+				fmt.Println("Error setting key on follower:", err)
+			}
+		}
+	}()
+
 	err := s.cache.Set(msg.Key, msg.Value, time.Duration(msg.TTL))
 	if err != nil {
 		return err
 	}
+	resp.Status = proto.StatusOK
+	_, err = conn.Write(resp.Bytes())
+	if err != nil {
+		fmt.Println("Error writing response to client:", err)
+	}
+	return nil
+}
+
+func (s *Server) handleJoin(conn net.Conn, msg *proto.CommandJoin) error {
+	fmt.Println("subscriber just joined the cluster:", conn.RemoteAddr())
+	s.subs[client.NewConn(conn)] = struct{}{}
 	return nil
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
@@ -22,30 +23,39 @@ func main() {
 	}
 
 	go func() {
-		time.Sleep(2 * time.Second)
-		c, err := client.NewClient(*listenAddress, client.ClientOpts{})
-		if err != nil {
-			log.Fatal("client cannot request", err)
-		}
-		for i := 0; i < 5; i++ {
-			err := c.Set(context.Background(), []byte("ayush"), []byte("gupta"), 200000000)
-			if err != nil {
-				log.Fatal("client cannot request", err)
-				continue
-			}
-		}
-		val, err := c.Get(context.Background(), []byte("ayush"))
-		if err != nil {
-			log.Fatal("client cannot request", err)
-		}
-		log.Println(string(val))
+		time.Sleep(5 * time.Second)
 
-		c.Close()
-
+		if listOpts.isAdmin {
+			sendData(*listenAddress)
+		}
 	}()
 
 	server := NEWServer(listOpts, cache.NewCache())
 	server.Start()
+}
+
+func sendData(listenAddress string) {
+	for i := 0; i < 2; i++ {
+		go func() {
+			c, err := client.NewClient(listenAddress, client.ClientOpts{})
+			if err != nil {
+				log.Fatal("client cannot request", err)
+			}
+			err = c.Set(context.Background(), []byte(fmt.Sprintf("key_%d", i)), []byte(fmt.Sprintf("Val_%d", i)), 200000000)
+			if err != nil {
+				log.Fatal("client cannot request", err)
+			}
+
+			val, err := c.Get(context.Background(), []byte("ayush"))
+			if err != nil {
+				log.Fatal("client cannot request", err)
+			}
+			log.Println(string(val))
+
+			c.Close()
+		}()
+
+	}
 }
 
 // go func() {

@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net"
 
 	"github.com/ayushgupta4002/bitboat/proto"
@@ -11,6 +13,13 @@ type Client struct {
 	conn net.Conn
 }
 type ClientOpts struct {
+}
+
+func NewConn(conn net.Conn) *Client {
+	return &Client{
+		conn: conn,
+	}
+
 }
 
 func NewClient(addr string, opts ClientOpts) (*Client, error) {
@@ -30,8 +39,18 @@ func (c *Client) Set(ctx context.Context, key []byte, value []byte, ttl int32) e
 		TTL:   ttl,
 	}
 	_, err := c.conn.Write(cmd.Bytes())
+	if err != nil {
+		return err
+	}
+	resp, err := proto.ParseResponseSet(c.conn)
+	if err != nil {
+		return err
+	}
+	if resp.Status != proto.StatusOK {
+		return fmt.Errorf("server responsed with non OK status [%s]", resp.Status.Normalize())
+	}
 
-	return err
+	return nil
 }
 
 func (c *Client) Get(ctx context.Context, key []byte) ([]byte, error) {
@@ -42,13 +61,17 @@ func (c *Client) Get(ctx context.Context, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	buf := make([]byte, 2048)
-	_, err = c.conn.Read(buf)
+	resp, err := proto.ParseResponseGet(c.conn)
+	if resp.Status != proto.StatusOK {
+		return nil, fmt.Errorf("server responsed with non OK status [%s]", resp.Status.Normalize())
+	}
+
+	log.Printf("GET Status", resp.Status)
 	if err != nil {
 		return nil, err
 	}
 
-	return buf, nil
+	return resp.Value, nil
 }
 
 func (c *Client) Close() {
