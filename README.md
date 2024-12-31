@@ -3,6 +3,8 @@
 ## Overview
 
 This project implements a distributed cache system using Go. It is designed to handle caching efficiently across multiple nodes, providing capabilities for storing, retrieving, and managing key-value pairs. The system includes features like TTL (time-to-live) for cache entries, distributed node communication, and administrative functionality for managing cluster operations.
+![image](https://github.com/user-attachments/assets/9264e2b7-8036-4a3b-b24d-466efe6b6555)
+
 
 ---
 
@@ -113,10 +115,6 @@ The cache system uses a custom binary protocol for communication between nodes a
 - **`main.go`**: The entry point for starting server and client nodes.
 
 ---
-## ToDOs
-
-- Restricting ```SET``` Aand ```Delete``` command for Admin nodes only in such a way that subscriber can only SET/DEL is request is coming directly from ADMIN conn.
-- Better Handling of all subscriber nodes connections [eg . detect and remove subscriber connection from map when disconnected ]
 
 ## Contributing
 
