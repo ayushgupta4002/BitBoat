@@ -86,7 +86,12 @@ func (c *Client) Set(ctx context.Context, key []byte, value []byte, ttl int32) e
 		return err
 	}
 	if resp.Status != proto.StatusOK {
-		return fmt.Errorf("server responsed with non OK status [%s]", resp.Status.Normalize())
+		if resp.Status == proto.StatusNotLeader {
+			log.Printf("Error :  this action can only be performed by leader :  %s", resp.Status.Normalize())
+			return nil
+		} else {
+			return fmt.Errorf("server responsed with non OK status [%s]", resp.Status.Normalize())
+		}
 	}
 
 	return nil

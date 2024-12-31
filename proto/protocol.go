@@ -36,6 +36,8 @@ const (
 	StatusOK
 	StatusErr
 	StatusKeyNotFound
+	StatusNotLeader
+	
 )
 
 func (s Status) Normalize() string {
@@ -46,6 +48,8 @@ func (s Status) Normalize() string {
 		return "ERR"
 	case StatusKeyNotFound:
 		return "KEY NOT FOUND"
+	case StatusNotLeader:
+		return "NOT LEADER"
 	default:
 		return "INVALID STATUS"
 	}
@@ -129,8 +133,14 @@ func ParseCommand(r io.Reader) (any, error) {
 	var cmd Command
 	err := binary.Read(r, binary.LittleEndian, &cmd)
 	if err != nil {
-		return nil, err
+		// Handle EOF gracefully
+		if err == io.EOF {
+			return nil, fmt.Errorf("client disconnected: %w", err)
+		}
+		// Handle any other read error
+		return nil, fmt.Errorf("failed to read command: %w", err)
 	}
+
 	switch cmd {
 	case CmdSet:
 		return ParseSet(r), nil

@@ -21,8 +21,9 @@ type ServerOpts struct {
 
 type Server struct {
 	ServerOpts
-	subs  map[*client.Client]struct{}
-	cache cache.Cacher
+	subs       map[*client.Client]struct{}
+	cache      cache.Cacher
+	leaderConn net.Conn
 }
 
 func NEWServer(opts ServerOpts, c cache.Cacher) *Server {
@@ -30,6 +31,7 @@ func NEWServer(opts ServerOpts, c cache.Cacher) *Server {
 		ServerOpts: opts,
 		cache:      c,
 		subs:       make(map[*client.Client]struct{}),
+		leaderConn: nil,
 	}
 }
 
@@ -68,6 +70,7 @@ func (s *Server) dialAdmin() error {
 		return fmt.Errorf("failed to connect to admin server", err)
 	}
 	log.Println("connected to leader:", s.adminAddr)
+	s.leaderConn = conn
 	binary.Write(conn, binary.LittleEndian, proto.CmdJoin)
 	s.handleConn(conn)
 	return nil
@@ -96,8 +99,14 @@ func (s *Server) handleConn(conn net.Conn) {
 func (s *Server) handleCommand(conn net.Conn, cmdStr any) {
 	switch cmd := cmdStr.(type) {
 	case *proto.CommandSet:
+		if len(cmd.Key) == 0 {
+			return
+		}
 		s.handleSet(conn, cmd)
 	case *proto.CommandGet_Del_Has:
+		if len(cmd.Key) == 0 {
+			return
+		}
 		if cmd.Cmd == proto.CmdDel {
 			s.handleDel(conn, cmd)
 		} else if cmd.Cmd == proto.CmdHas {
@@ -129,9 +138,8 @@ func (s *Server) handleHas(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
 }
 
 func (s *Server) handleDel(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
-	
-	resp := &proto.ResponseSet_Has_Delete{}
 
+	resp := &proto.ResponseSet_Has_Delete{}
 
 	go func() {
 		for subs := range s.subs {
@@ -172,23 +180,48 @@ func (s *Server) handleGet(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
 }
 func (s *Server) handleSet(conn net.Conn, msg *proto.CommandSet) error {
 	resp := &proto.ResponseSet_Has_Delete{}
-	log.Printf("SET %s to %s", msg.Key, msg.Value)
 
-	go func() {
-		for subs := range s.subs {
-			err := subs.Set(context.TODO(), msg.Key, msg.Value, msg.TTL)
-			if err != nil {
-				fmt.Println("Error setting key on follower:", err)
+	if s.isAdmin {
+		// Leader logic
+		log.Printf("SET %s to %s", msg.Key, msg.Value)
+
+		// Propagate to followers
+		go func() {
+			for subs := range s.subs {
+				err := subs.Set(context.TODO(), msg.Key, msg.Value, msg.TTL)
+				if err != nil {
+					fmt.Println("Error setting key on follower:", err)
+				}
 			}
-		}
-	}()
+		}()
 
-	err := s.cache.Set(msg.Key, msg.Value, time.Duration(msg.TTL))
-	if err != nil {
-		return err
+		// Set in leader's cache
+		err := s.cache.Set(msg.Key, msg.Value, time.Duration(msg.TTL))
+		if err != nil {
+			return err
+		}
+
+		resp.Status = proto.StatusOK
+	} else {
+		// Follower logic
+		if !s.isLeaderConn(conn) {
+			// Reject if not from leader
+			resp.Status = proto.StatusNotLeader
+
+			log.Println("Rejecting SET command: only leader can initiate key updates")
+		} else {
+			// Accept if from leader
+			log.Printf("SET %s to %s follower", msg.Key, msg.Value)
+
+			err := s.cache.Set(msg.Key, msg.Value, time.Duration(msg.TTL))
+			if err != nil {
+				return err
+			}
+			resp.Status = proto.StatusOK
+		}
 	}
-	resp.Status = proto.StatusOK
-	_, err = conn.Write(resp.Bytes())
+
+	_, err := conn.Write(resp.Bytes())
 	if err != nil {
 		fmt.Println("Error writing response to client:", err)
 	}
@@ -241,3 +274,10 @@ func (s *Server) handleJoin(conn net.Conn, msg *proto.CommandJoin) error {
 // 	}
 // 	return nil
 // }
+
+func (s *Server) isLeaderConn(conn net.Conn) bool {
+	if s.leaderConn == nil {
+		return false
+	}
+	return conn.RemoteAddr().String() == s.leaderConn.RemoteAddr().String()
+}

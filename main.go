@@ -38,18 +38,18 @@ func main() {
 func sendData(listenAddress string) {
 	for i := 0; i < 2; i++ {
 		go func() {
-			c, err := client.NewClient(listenAddress, client.ClientOpts{})
+			c, err := client.NewClient("localhost:8080", client.ClientOpts{})
 			if err != nil {
 				log.Fatal("client cannot request", err)
 			}
 			err = c.Set(context.Background(), []byte(fmt.Sprintf("key_%d", i)), []byte(fmt.Sprintf("Val_%d", i)), 2000000000)
 			if err != nil {
-				log.Fatal("client cannot request", err)
+				log.Fatal("client cannot set", err)
 			}
 
 			val, err := c.Get(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
 			if err != nil {
-				log.Fatal("client cannot request", err)
+				log.Fatal("client cannot get", err)
 			}
 			log.Println(string(val))
 			err = c.Delete(context.Background(), []byte(fmt.Sprintf("key_%d", i)))

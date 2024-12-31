@@ -21,8 +21,9 @@ func (c *Cache) Set(key []byte, value []byte, ttl time.Duration) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.data[string(key)] = value
-	ticker := time.NewTicker(ttl)
 	if ttl > 0 {
+		ticker := time.NewTicker(ttl)
+
 		go func() {
 			<-ticker.C
 			delete(c.data, string(key))
