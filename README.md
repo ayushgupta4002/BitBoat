@@ -48,6 +48,8 @@ Start a Subscriber node that connects to Admin:
 go run main.go --listenaddr localhost:8081 --adminaddr localhost:8080
 ```
 
+![image](https://github.com/user-attachments/assets/f82ef0f7-5993-4354-9bfe-1116669c00cf)
+
 ---
 
 ## Client Usage
