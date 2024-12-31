@@ -21,10 +21,15 @@ func main() {
 		isAdmin:    len(*adminAddress) == 0,
 		adminAddr:  *adminAddress,
 	}
-
+	//simulating a demo client
 	go func() {
-		time.Sleep(5 * time.Second)
+		// this function will run after 5 seconds and will send request to Admin Server to set, get and delete the key
+		// we can instead send the request to the client also but then we can only GET and HAS the key
 
+		time.Sleep(5 * time.Second)
+		// if the server starts and the initiator is admin then wait for 5 seconds and then send request to admin
+		// meanwhile in those 5 seconds I can connect a subscriber to the server to check if the server is working fine
+		// JUST FOR SIMULATING THE BEHAVIOUR
 		if listOpts.isAdmin {
 			sendData(*listenAddress)
 		}
@@ -35,10 +40,11 @@ func main() {
 	server.Start()
 }
 
+// simulating a demo client
 func sendData(listenAddress string) {
 	for i := 0; i < 2; i++ {
 		go func() {
-			c, err := client.NewClient("localhost:8080", client.ClientOpts{})
+			c, err := client.NewClient(listenAddress, client.ClientOpts{})
 			if err != nil {
 				log.Fatal("client cannot request", err)
 			}
@@ -47,19 +53,19 @@ func sendData(listenAddress string) {
 				log.Fatal("client cannot set", err)
 			}
 
-			val, err := c.Get(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
+			_, err = c.Get(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
 			if err != nil {
 				log.Fatal("client cannot get", err)
 			}
-			log.Println(string(val))
+			// log.Println(string(val))
 			err = c.Delete(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
 			if err != nil {
 				log.Fatal("client could not delete the key", err)
 			}
-			err = c.Has(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
-			if err != nil {
-				log.Fatal("client could not delete the key", err)
-			}
+			// err = c.Has(context.Background(), []byte(fmt.Sprintf("key_%d", i)))
+			// if err != nil {
+			// 	log.Fatal("client could not delete the key", err)
+			// }
 
 			c.Close()
 		}()

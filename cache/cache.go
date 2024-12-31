@@ -23,7 +23,7 @@ func (c *Cache) Set(key []byte, value []byte, ttl time.Duration) error {
 	c.data[string(key)] = value
 	if ttl > 0 {
 		ticker := time.NewTicker(ttl)
-
+		//delete the key after the ttl
 		go func() {
 			<-ticker.C
 			delete(c.data, string(key))

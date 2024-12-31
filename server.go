@@ -23,7 +23,7 @@ type Server struct {
 	ServerOpts
 	subs       map[*client.Client]struct{}
 	cache      cache.Cacher
-	leaderConn net.Conn
+	leaderConn net.Conn // To keep a track of if the request is coming from leader or not
 }
 
 func NEWServer(opts ServerOpts, c cache.Cacher) *Server {
@@ -41,7 +41,7 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 	defer l.Close()
-
+	// if the server is follower/subscriber then it will to the leader
 	if !s.isAdmin && len(s.adminAddr) > 0 {
 		go func() {
 			err = s.dialAdmin()
@@ -71,7 +71,7 @@ func (s *Server) dialAdmin() error {
 	}
 	log.Println("connected to leader:", s.adminAddr)
 	s.leaderConn = conn
-	binary.Write(conn, binary.LittleEndian, proto.CmdJoin)
+	binary.Write(conn, binary.LittleEndian, proto.CmdJoin) // this will write to admin , leader will receive this JOIN cmd and add this subscriber to its followers map
 	s.handleConn(conn)
 	return nil
 }
@@ -83,7 +83,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		cmdStruct, err := proto.ParseCommand(conn)
 		if err != nil {
 			if err.Error() == "EOF" {
-				// Gracefully handle the client closing the connection
+				// handle the client closing the connection
 				fmt.Println("Client closed the connection.")
 				break
 			}
@@ -138,7 +138,7 @@ func (s *Server) handleHas(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
 }
 
 func (s *Server) handleDel(conn net.Conn, msg *proto.CommandGet_Del_Has) error {
-
+	//TODO: implement logic for only Leader to delete key and propagate to followers
 	resp := &proto.ResponseSet_Has_Delete{}
 
 	go func() {
@@ -204,6 +204,7 @@ func (s *Server) handleSet(conn net.Conn, msg *proto.CommandSet) error {
 		resp.Status = proto.StatusOK
 	} else {
 		// Follower logic
+		//if request of setting key is coming from leader then only follower will set the key otherwise it will reject the request
 		if !s.isLeaderConn(conn) {
 			// Reject if not from leader
 			resp.Status = proto.StatusNotLeader
@@ -228,6 +229,7 @@ func (s *Server) handleSet(conn net.Conn, msg *proto.CommandSet) error {
 	return nil
 }
 
+// this chunk of code will only work for leader
 func (s *Server) handleJoin(conn net.Conn, msg *proto.CommandJoin) error {
 	fmt.Println("subscriber just joined the cluster:", conn.RemoteAddr())
 	s.subs[client.NewConn(conn)] = struct{}{}
